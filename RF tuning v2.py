@@ -23,6 +23,7 @@ from sklearn.preprocessing import StandardScaler
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
 
 from sklearn.metrics import (
@@ -39,22 +40,45 @@ from sklearn.metrics import (
 # Load Dataset
 # ==========================
 
-df = pd.read_csv("heart_disease_dataset.csv")
+df = pd.read_csv("cleaned_merged_heart_dataset.csv")
+
+print(df.shape)
+
+print("\nMissing Values:")
+print(df.isnull().sum())
+
+print("\nTarget Distribution:")
+print(df["target"].value_counts())
 
 # ==========================
 # Separate Features and Target
 # ==========================
 
-X = df.drop("Heart Disease", axis=1)
-y = df["Heart Disease"]
+X = df.drop("target", axis=1)
+y = df["target"]
 
 # ==========================
 # Detect Numerical and Categorical Columns
 # ==========================
 
-numerical_columns = X.select_dtypes(include=["int64", "float64"]).columns
+categorical_columns = [
+    "sex",
+    "cp",
+    "fbs",
+    "restecg",
+    "exang",
+    "slope",
+    "ca",
+    "thal"
+]
 
-categorical_columns = X.select_dtypes(include=["object"]).columns
+numerical_columns = [
+    "age",
+    "trestbps",
+    "chol",
+    "thalachh",
+    "oldpeak"
+]
 
 print("Numerical Columns:")
 print(numerical_columns)
@@ -126,19 +150,26 @@ X_train, X_test = X_train.align(
     axis=1,
     fill_value=0
 )
-
 # ==========================
 # Feature Scaling
 # ==========================
 
+continuous_features = [
+    "age",
+    "trestbps",
+    "chol",
+    "thalachh",
+    "oldpeak"
+]
+
 scaler = StandardScaler()
 
-X_train[numerical_columns] = scaler.fit_transform(
-    X_train[numerical_columns]
+X_train[continuous_features] = scaler.fit_transform(
+    X_train[continuous_features]
 )
 
-X_test[numerical_columns] = scaler.transform(
-    X_test[numerical_columns]
+X_test[continuous_features] = scaler.transform(
+    X_test[continuous_features]
 )
 
 # ==========================
@@ -180,6 +211,19 @@ rf = rf_grid.best_estimator_
 
 rf_cv_results = pd.DataFrame(rf_grid.cv_results_)
 best_idx = rf_grid.best_index_
+
+rf_table = rf_cv_results[
+    [
+        "params",
+        "mean_test_score",
+        "std_test_score",
+        "rank_test_score"
+    ]
+].sort_values(
+    by="rank_test_score"
+)
+
+print(rf_table.to_string(index=False))
 
 plt.figure(figsize=(12, 6))
 plt.errorbar(
@@ -276,11 +320,18 @@ rf_test_prob = rf.predict_proba(X_test)
 # ==========================
 # Train SVM (vanilla, no tuning)
 # ==========================
+# SVC(probability=True) is deprecated (removed once scikit-learn hits
+# 1.11) since its internal Platt scaling reuses the same folds as the
+# decision function. CalibratedClassifierCV(ensemble=False) is the
+# forward-compatible replacement: it fits the SVM on part of the training
+# data and calibrates probabilities on a held-out fold. Still "vanilla"
+# in the sense that C/gamma are left at their defaults -- no tuning.
 
-svm = SVC(
-    kernel="rbf",
-    probability=True,
-    random_state=42
+svm = CalibratedClassifierCV(
+    estimator=SVC(kernel="rbf", random_state=42),
+    method="sigmoid",
+    cv=5,
+    ensemble=False
 )
 
 svm.fit(X_train, y_train)
@@ -401,12 +452,93 @@ plot_learning_curve(
     rf,
     X_train,
     y_train,
-    "Random Forest Learning Curve (Tuned)"
+    "Random Forest Learning Curve (Tuned, base learner only)"
 )
 
 plot_learning_curve(
     svm,
     X_train,
     y_train,
-    "Support Vector Machine Learning Curve (Vanilla)"
+    "Support Vector Machine Learning Curve (Default, base learner only)"
 )
+
+# ==========================
+# Hybrid Model Learning Curve (Final LR Result)
+# ==========================
+# The two curves above only show each BASE learner in isolation --
+# neither one goes through the stacking process, so neither reflects the
+# final LR output. sklearn's learning_curve() can't do that automatically
+# here since the stacking is hand-rolled rather than a Pipeline/
+# StackingClassifier, so this rebuilds the whole pipeline at each
+# training size: fit RF (tuned hyperparameters) + SVM (vanilla) on the
+# subsample, build meta-features, fit LR, then score the LR's own
+# predictions -- i.e. the actual final hybrid result -- on both the
+# training subsample and a held-out validation fold.
+
+from sklearn.model_selection import StratifiedKFold
+
+def hybrid_learning_curve(X, y, rf_best_params, train_sizes=np.linspace(0.1, 1.0, 10), cv=5, random_state=42):
+    skf = StratifiedKFold(n_splits=cv, shuffle=True, random_state=random_state)
+    X = X.reset_index(drop=True)
+    y = y.reset_index(drop=True)
+
+    sizes_out, train_acc_out, val_acc_out = [], [], []
+
+    for frac in train_sizes:
+        fold_train_acc, fold_val_acc = [], []
+
+        for train_idx, val_idx in skf.split(X, y):
+            X_tr_full, y_tr_full = X.iloc[train_idx], y.iloc[train_idx]
+            X_val, y_val = X.iloc[val_idx], y.iloc[val_idx]
+
+            n_sub = max(int(len(X_tr_full) * frac), 20)
+            X_sub, y_sub = X_tr_full.iloc[:n_sub], y_tr_full.iloc[:n_sub]
+
+            if y_sub.nunique() < 2:
+                continue
+
+            rf_m = RandomForestClassifier(**rf_best_params, random_state=random_state)
+            # cv=3 here (vs. 5 elsewhere) since the smallest training_sizes
+            # subsample can be as few as 20 rows -- keeps each calibration
+            # fold large enough to be meaningful
+            svm_m = CalibratedClassifierCV(
+                estimator=SVC(kernel="rbf", random_state=random_state),
+                method="sigmoid",
+                cv=3,
+                ensemble=False
+            )
+            rf_m.fit(X_sub, y_sub)
+            svm_m.fit(X_sub, y_sub)
+
+            meta_sub = np.hstack((rf_m.predict_proba(X_sub), svm_m.predict_proba(X_sub)))
+            meta_val = np.hstack((rf_m.predict_proba(X_val), svm_m.predict_proba(X_val)))
+
+            lr_m = LogisticRegression(random_state=random_state, max_iter=1000)
+            lr_m.fit(meta_sub, y_sub)
+
+            fold_train_acc.append(accuracy_score(y_sub, lr_m.predict(meta_sub)))
+            fold_val_acc.append(accuracy_score(y_val, lr_m.predict(meta_val)))
+
+        sizes_out.append(n_sub)
+        train_acc_out.append(np.mean(fold_train_acc))
+        val_acc_out.append(np.mean(fold_val_acc))
+
+    return np.array(sizes_out), np.array(train_acc_out), np.array(val_acc_out)
+
+
+hybrid_sizes, hybrid_train_acc, hybrid_val_acc = hybrid_learning_curve(
+    X_train,
+    y_train,
+    rf_grid.best_params_
+)
+
+plt.figure(figsize=(8, 6))
+plt.plot(hybrid_sizes, hybrid_train_acc, marker="o", label="Training Accuracy (Final Hybrid)")
+plt.plot(hybrid_sizes, hybrid_val_acc, marker="s", label="Validation Accuracy (Final Hybrid)")
+plt.title("Hybrid Model Learning Curve (RF + SVM + LR, Final Result)")
+plt.xlabel("Training Set Size")
+plt.ylabel("Accuracy")
+plt.legend()
+plt.grid(True)
+plt.savefig("hybrid_learning_curve.png", dpi=300, bbox_inches="tight")
+plt.show()
