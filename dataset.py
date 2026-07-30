@@ -13,9 +13,5 @@ from sklearn.svm import SVC
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
 
-df = pd.read_csv("heart_disease_uci.csv")
-
-print(df.shape)
-print(df.head())
-print(df.info())
-print(df.columns)
+df = pd.read_csv("heart_statlog_cleveland_hungary_final.csv")
+print(df.columns.tolist())
