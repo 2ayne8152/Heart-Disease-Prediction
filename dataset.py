@@ -13,7 +13,7 @@ from sklearn.svm import SVC
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.linear_model import LogisticRegression
 
-df = pd.read_csv("heart_disease_dataset.csv")
+df = pd.read_csv("heart_disease_uci.csv")
 
 print(df.shape)
 print(df.head())

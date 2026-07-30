@@ -1,7 +1,10 @@
 # ==========================================================
 # Heart Disease Prediction using Hybrid RF + SVM + LR
 # Based on:
-# A Hybrid Random Forest–Support Vector Machine Model
+# A Hybrid Random Forest-Support Vector Machine Model
+#
+# Dataset: UCI Heart Disease Data (Kaggle: redwankarimsony/heart-disease-data)
+# Combines Cleveland, Hungarian, Switzerland, and VA Long Beach cohorts.
 #
 # STAGE: RF is hyperparameter-tuned (GridSearchCV), SVM is left vanilla.
 # Next stage (later): fix RF at its tuned settings, tune SVM instead.
@@ -40,44 +43,56 @@ from sklearn.metrics import (
 # Load Dataset
 # ==========================
 
-df = pd.read_csv("cleaned_merged_heart_dataset.csv")
+df = pd.read_csv("heart_disease_uci.csv")
 
 print(df.shape)
 
 print("\nMissing Values:")
 print(df.isnull().sum())
 
-print("\nTarget Distribution:")
-print(df["target"].value_counts())
+# "num" is the raw target: 0 = no disease, 1-4 = increasing severity.
+# Binarize to 0/1 since the rest of the pipeline uses binary metrics
+# (precision_score, recall_score, roc_auc_score default to binary).
+print("\nRaw Target ('num') Distribution:")
+print(df["num"].value_counts().sort_index())
 
 # ==========================
 # Separate Features and Target
 # ==========================
 
-X = df.drop("target", axis=1)
-y = df["target"]
+# "id" is just a row identifier, not a feature.
+# "dataset" records which of the 4 source hospitals a row came from --
+# disease prevalence differs a lot by site as a data-collection artifact
+# rather than anything clinically meaningful, so it's dropped by default.
+# Add it back to categorical_columns below if you'd rather keep it.
+X = df.drop(columns=["id", "num", "dataset"])
+
+y = (df["num"] > 0).astype(int)
+
+print("\nBinarized Target Distribution (0 = no disease, 1 = disease present):")
+print(y.value_counts())
 
 # ==========================
 # Detect Numerical and Categorical Columns
 # ==========================
 
 categorical_columns = [
-    "sex",
-    "cp",
-    "fbs",
-    "restecg",
-    "exang",
-    "slope",
-    "ca",
-    "thal"
+    "sex",       # Male / Female
+    "cp",        # chest pain type
+    "fbs",       # fasting blood sugar > 120 mg/dl (True/False)
+    "restecg",   # resting ECG result
+    "exang",     # exercise-induced angina (True/False)
+    "slope",     # slope of peak exercise ST segment
+    "thal"       # thalassemia result
 ]
 
 numerical_columns = [
     "age",
-    "trestbps",
-    "chol",
-    "thalachh",
-    "oldpeak"
+    "trestbps",  # resting blood pressure
+    "chol",      # serum cholesterol
+    "thalch",    # max heart rate achieved (note: "thalch", not "thalachh")
+    "oldpeak",   # ST depression induced by exercise
+    "ca"         # number of major vessels colored by fluoroscopy (0-3)
 ]
 
 print("Numerical Columns:")
@@ -101,6 +116,9 @@ X_train, X_test, y_train, y_test = train_test_split(
 # ==========================
 # Handle Missing Values
 # ==========================
+# This dataset has substantial missingness outside the Cleveland cohort
+# (e.g. "ca" and "thal" are missing for most of the Switzerland/VA rows),
+# so imputation matters more here than on a single-source dataset.
 
 # Numerical Features
 
@@ -129,6 +147,10 @@ X_test[categorical_columns] = cat_imputer.transform(
 # ==========================
 # One-Hot Encoding
 # ==========================
+# fbs/exang are boolean-valued but read in as object dtype (mixed with
+# NaN before imputation), so get_dummies treats them like any other
+# categorical column here -- that's fine, drop_first=True still collapses
+# each to a single True/False indicator column as expected.
 
 X_train = pd.get_dummies(
     X_train,
@@ -150,26 +172,22 @@ X_train, X_test = X_train.align(
     axis=1,
     fill_value=0
 )
+
 # ==========================
 # Feature Scaling
 # ==========================
-
-continuous_features = [
-    "age",
-    "trestbps",
-    "chol",
-    "thalachh",
-    "oldpeak"
-]
+# Reusing numerical_columns here (rather than a separately hardcoded list)
+# so the scaled columns can't silently drift out of sync with what was
+# imputed above.
 
 scaler = StandardScaler()
 
-X_train[continuous_features] = scaler.fit_transform(
-    X_train[continuous_features]
+X_train[numerical_columns] = scaler.fit_transform(
+    X_train[numerical_columns]
 )
 
-X_test[continuous_features] = scaler.transform(
-    X_test[continuous_features]
+X_test[numerical_columns] = scaler.transform(
+    X_test[numerical_columns]
 )
 
 # ==========================
@@ -177,7 +195,7 @@ X_test[continuous_features] = scaler.transform(
 # ==========================
 
 rf_parameters = {
-    "n_estimators": [100, 200, 300],
+    "n_estimators": [100, 200, 300, 400, 500],
     "max_depth": [None, 10, 20],
     "min_samples_split": [2, 5, 10],
     "min_samples_leaf": [1, 2, 4],
