@@ -15,3 +15,10 @@ from sklearn.linear_model import LogisticRegression
 
 df = pd.read_csv("heart_statlog_cleveland_hungary_final.csv")
 print(df.columns.tolist())
+
+plt.figure(figsize=(8,6))
+plt.scatter(df["Age"], df["Cholesterol"], c=(y=="Yes").astype(int) if y.dtype=="object" else y, cmap="coolwarm", alpha=0.6)
+plt.xlabel("Age")
+plt.ylabel("Cholesterol")
+plt.title("Age vs Cholesterol colored by Heart Disease label")
+plt.show()

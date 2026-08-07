@@ -1,0 +1,2 @@
+Model,Accuracy,Precision,Recall,F1-Score,ROC-AUC,RF_CV_Score,SVM_CV_Score,Best_RF_Params
+Hybrid (RF + SVM + LR),0.995,1.0,0.9871794871794872,0.9935483870967742,1.0,0.99875,0.915,"{'class_weight': 'balanced', 'max_depth': 10, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 50}"
