@@ -41,22 +41,14 @@ from sklearn.metrics import (
 # Load Dataset
 # ==========================
 
-df = pd.read_csv("cleaned_merged_heart_dataset.csv")
-
-# ==========================
-# Remove Duplicates
-# ==========================
-
-df = df.drop_duplicates().reset_index(drop=True)  # Remove duplicate rows if any
-print(f"Dataset shape after removing duplicates: {df.shape}")
-
+df = pd.read_csv("heart_disease_dataset.csv")
 # ==========================
 # Separate Features and Target
 # ==========================
 
-X = df.drop("target", axis=1)
+X = df.drop("Heart Disease", axis=1)
 #X = df[["Age", "Cholesterol"]]
-y = df["target"]
+y = df["Heart Disease"]
 
 # ==========================
 # Detect Numerical and Categorical Columns
@@ -78,8 +70,8 @@ print(categorical_columns)
 num_imputer = SimpleImputer(strategy="median")
 X[numerical_columns] = num_imputer.fit_transform(X[numerical_columns])
 
-'''cat_imputer = SimpleImputer(strategy="most_frequent")
-X[categorical_columns] = cat_imputer.fit_transform(X[categorical_columns])'''
+cat_imputer = SimpleImputer(strategy="most_frequent")
+X[categorical_columns] = cat_imputer.fit_transform(X[categorical_columns])
 
 # ==========================
 # Outlier Removal
@@ -276,7 +268,6 @@ plt.tight_layout()
 plt.savefig("final_confusion_matrix.png", dpi=300, bbox_inches="tight")
 plt.show()
 
-
 # ==========================
 # ROC Curve Graph (Final Hybrid Model)
 # ==========================
@@ -297,6 +288,7 @@ plt.legend(loc="lower right")
 plt.grid(True)
 plt.savefig("final_roc_curve.png", dpi=300, bbox_inches="tight")
 plt.show()
+
 
 # ==========================
 # Hybrid Model Learning Curve (Final LR Result)
@@ -388,3 +380,47 @@ plt.legend()
 plt.grid(True)
 plt.savefig("hybrid_learning_curve.png", dpi=300, bbox_inches="tight")
 plt.show()
+
+# ==========================
+# Save Hybrid Model
+# ==========================
+import joblib
+import json
+import os
+
+
+# Save the three components of the hybrid model
+joblib.dump(rf, f"outputs/rf_model.pkl")
+joblib.dump(svm, f"outputs/svm_model.pkl")
+joblib.dump(meta_model, f"outputs/meta_model.pkl")
+
+print("\nModels Saved Successfully")
+print(f"RF model      : outputs/rf_model.pkl")
+print(f"SVM model     : outputs/svm_model.pkl")
+print(f"Meta-model    : outputs/meta_model.pkl")
+
+
+# ==========================
+# Save Model Performance
+# ==========================
+
+metrics_path = f"outputs/metrics.json"
+
+existing = {}
+
+if os.path.exists(metrics_path):
+    with open(metrics_path, "r") as f:
+        existing = json.load(f)
+
+existing["RF + SVM + LR"] = {
+    "accuracy": float(accuracy),
+    "precision": float(precision),
+    "recall": float(recall),
+    "f1": float(f1),
+    "roc_auc": float(auc)
+}
+
+with open(metrics_path, "w") as f:
+    json.dump(existing, f, indent=2)
+
+print(f"Metrics saved to: {metrics_path}")
