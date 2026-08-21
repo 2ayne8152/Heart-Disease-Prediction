@@ -1,40 +1,3 @@
-# ==========================================================
-# Heart Disease Prediction using Hybrid RF + SVM + LR
-#
-# Based on:
-# Chahar, R. "A Hybrid Random Forest-Support Vector Machine Model
-# for Enhanced Heart Disease Prediction." 2026 CCIC.
-#
-# This follows the paper's Algorithm 1 as closely as possible:
-#   Step 1: Load dataset D = {(X_i, y_i)}
-#   Step 2: Pre-process D -> handle missing values, feature scaling,
-#           80:20 train/test split
-#   Step 3: Train RF          -> P_RF(X)  = RF.predict_proba(X)
-#   Step 4: Train SVM (RBF)   -> P_SVM(X) = SVM.predict_proba(X)
-#   Step 5: Meta-feature matrix Z = [P_RF(X), P_SVM(X)]
-#   Step 6: Train LR meta-classifier on Z -> y_hat = Meta(Z)
-#   Step 7: Predict on X_test, evaluate
-#
-# No hyperparameter search or calibrated SVM -- the paper doesn't
-# mention tuning, so RF/SVM use plain defaults, and SVC(probability=True)
-# is used directly for predict_proba, per Algorithm 1.
-#
-# Preprocessing includes duplicate-row removal (matches your old code),
-# missing-value imputation, one-hot encoding of any categorical columns,
-# feature scaling, and an 80:20 split -- all per Algorithm 1's Step 2.
-#
-# Graphs mirror your old code's set: confusion matrix, ROC curve, and
-# learning curves (RF, SVM, and the final hybrid model), each with a
-# small improvement noted inline (e.g. shaded std-dev bands, RF/SVM
-# curves layered onto the final ROC plot for context).
-#
-# HOW TO RUN IN VS CODE: this is a plain top-to-bottom script (no
-# argparse). Hit "Run Python File", or use the Python Interactive /
-# Jupyter extension and run it cell by cell with the "# %%" markers.
-# Just set DATA_PATH / TARGET_COLUMN below first.
-# ==========================================================
-
-# %% Import Libraries
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -61,8 +24,8 @@ from sklearn.metrics import (
 RANDOM_STATE = 42
 
 # %% Config -- edit these for your file, then just run the script
-DATA_PATH = "cleaned_merged_heart_dataset.csv"
-TARGET_COLUMN = "target"     # e.g. "target" or "Heart Disease"
+DATA_PATH = "heart_disease_dataset.csv"
+TARGET_COLUMN = "Heart Disease"     # e.g. "target" or "Heart Disease"
 OUTPUT_DIR = "./outputs"
 
 # ==========================
